@@ -124,9 +124,11 @@ ensure_qemu() {
     return
   fi
 
-  log "Resolving QEMU resources version..."
-  _res_ver=$(resolve_latest_version "resources")
-  log "Resolved resources to $_res_ver"
+  if [ ! -f "$_qemu_bin" ] || [ ! -f "$_img_bin" ]; then
+    log "Resolving QEMU resources version..."
+    _res_ver=$(resolve_latest_version "resources")
+    log "Resolved resources to $_res_ver"
+  fi
 
   # Download QEMU System
   if [ ! -f "$_qemu_bin" ]; then
