@@ -41,6 +41,7 @@ qvm --version
 ### Commands
 - `run`: Downloads necessary resources and launches the VM.
 - `pull`: Downloads the base VM image for the specified OS/Version to the cache without running it.
+- `rm`: Removes a specific VM instance (backing file) from the cache.
 - `list`: Lists all created VM instances (backing files) currently in the cache.
 - `config print-path`: Prints the absolute path to the configuration/cache directory.
 
@@ -58,6 +59,9 @@ qvm --version
 
 #### `pull`
 - `--platform <ARCH>`: CPU architecture (defaults to host).
+
+#### `rm`
+- `<NAME>`: The name of the VM instance to remove (as shown in `list`).
 
 
 ### Behavior

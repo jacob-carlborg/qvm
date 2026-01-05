@@ -28,6 +28,7 @@ Usage: qvm <COMMAND> [OPTIONS]
 Commands:
   run [OPTIONS] <OS> <VERSION>   Run a virtual machine
   pull [OPTIONS] <OS> <VERSION>  Download VM image without running
+  rm <NAME>                      Remove a VM instance
   list                           List created VM instances
   config print-path              Print configuration/cache path
 
@@ -203,6 +204,22 @@ cmd_list() {
   done
 }
 
+cmd_rm() {
+  if [ $# -lt 1 ]; then
+    error "Missing argument: <NAME>"
+  fi
+  
+  _name="$1"
+  _path="$CACHE_DIR/instances/${_name}.qcow2"
+  
+  if [ ! -f "$_path" ]; then
+    error "VM instance not found: $_name"
+  fi
+  
+  rm "$_path"
+  log "Removed VM instance: $_name"
+}
+
 cmd_config() {
   if [ "$1" = "print-path" ]; then
     echo "$CACHE_DIR"
@@ -341,6 +358,7 @@ main() {
   case "$CMD" in
     run) cmd_run "$@" ;;
     pull) cmd_pull "$@" ;;
+    rm) cmd_rm "$@" ;;
     list) cmd_list "$@" ;;
     config) cmd_config "$@" ;;
     *) error "Unknown command: $CMD. See 'qvm --help'." ;;
