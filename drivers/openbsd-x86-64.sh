@@ -5,7 +5,7 @@ qemu-system-x86_64 \
   -smp 2 \
   -m 6G \
   -device e1000,netdev=user.0,addr=0x03 \
-  -netdev user,id=user.0,hostfwd=tcp::2847-:22 \
+  -netdev user,id=user.0 \
   -display none \
   -monitor none \
   -boot strict=off \
