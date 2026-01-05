@@ -46,7 +46,7 @@ EOF
 }
 
 print_version() {
-  echo "qvm version ${VERSION}"
+  echo "${VERSION}"
 }
 
 # Detect host OS and Architecture
