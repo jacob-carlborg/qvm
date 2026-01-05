@@ -112,6 +112,14 @@ ensure_qemu() {
   _qemu_bin="$CACHE_DIR/bin/qemu-system-${_qemu_arch}"
   _img_bin="$CACHE_DIR/bin/qemu-img"
 
+  # Verify binaries are non-empty
+  if [ -f "$_qemu_bin" ] && [ ! -s "$_qemu_bin" ]; then
+    rm "$_qemu_bin"
+  fi
+  if [ -f "$_img_bin" ] && [ ! -s "$_img_bin" ]; then
+    rm "$_img_bin"
+  fi
+
   if [ -f "$_qemu_bin" ] && [ -f "$_img_bin" ]; then
     return
   fi
