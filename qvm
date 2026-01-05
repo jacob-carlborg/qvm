@@ -36,12 +36,48 @@ Options:
   --help                         Show this help message
   --version                      Show version information
 
-Run/Pull Options:
-  --platform <ARCH>              CPU architecture (default: host)
+Run 'qvm <COMMAND> --help' for command-specific options.
+EOF
+}
 
-Run Options:
-  --rm                           Delete VM instance after shutdown
-  --dry-run                      Print QEMU command without running
+usage_run() {
+  cat <<EOF
+Usage: qvm run [OPTIONS] <OS> <VERSION>
+
+Description:
+  Downloads necessary resources and launches a virtual machine.
+
+Options:
+  --name <NAME>      Name of the VM instance (default: qvm-<TIMESTAMP>-<PID>)
+  --platform <ARCH>  CPU architecture (default: host)
+  --rm               Delete the VM instance after shutdown
+  --dry-run          Print QEMU command without running
+  --help             Show this help message
+EOF
+}
+
+usage_pull() {
+  cat <<EOF
+Usage: qvm pull [OPTIONS] <OS> <VERSION>
+
+Description:
+  Downloads the base VM image for the specified OS/Version to the cache.
+
+Options:
+  --platform <ARCH>  CPU architecture (default: host)
+  --help             Show this help message
+EOF
+}
+
+usage_rm() {
+  cat <<EOF
+Usage: qvm rm <NAME>
+
+Description:
+  Removes a specific VM instance from the cache.
+
+Options:
+  --help             Show this help message
 EOF
 }
 
@@ -205,6 +241,14 @@ cmd_list() {
 }
 
 cmd_rm() {
+  # Check for help flag
+  for arg in "$@"; do
+    if [ "$arg" = "--help" ] || [ "$arg" = "-h" ]; then
+      usage_rm
+      exit 0
+    fi
+  done
+
   if [ $# -lt 1 ]; then
     error "Missing argument: <NAME>"
   fi
@@ -229,6 +273,14 @@ cmd_config() {
 }
 
 cmd_pull() {
+  # Check for help flag
+  for arg in "$@"; do
+    if [ "$arg" = "--help" ] || [ "$arg" = "-h" ]; then
+      usage_pull
+      exit 0
+    fi
+  done
+
   detect_host
   _target_arch="$HOST_ARCH"
   
@@ -253,6 +305,14 @@ cmd_pull() {
 }
 
 cmd_run() {
+  # Check for help flag before anything else
+  for arg in "$@"; do
+    if [ "$arg" = "--help" ] || [ "$arg" = "-h" ]; then
+      usage_run
+      exit 0
+    fi
+  done
+
   detect_host
   _target_arch="$HOST_ARCH"
   _remove_vm=0
