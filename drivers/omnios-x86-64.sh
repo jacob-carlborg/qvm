@@ -1,0 +1,14 @@
+qemu-system-x86_64 \
+  -nographic \
+  -machine type=q35,accel=hvf:kvm:tcg \
+  -cpu max \
+  -smp 2 \
+  -m 6G \
+  -device virtio-net,netdev=user.0,addr=0x03 \
+  -netdev user,id=user.0,hostfwd=tcp::2847-:22 \
+  -display none \
+  -monitor none \
+  -boot strict=off \
+  -bios "$QVM_CACHE/share/qemu/bios-256k.bin" \
+  -device virtio-blk,drive=drive0,bootindex=0,addr=0x02 \
+  -drive if=none,file="$VM_IMAGE",id=drive0,cache=unsafe,discard=ignore,format=qcow2

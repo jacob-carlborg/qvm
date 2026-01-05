@@ -1,0 +1,15 @@
+qemu-system-aarch64 \
+  -nographic \
+  -machine type=virt,accel=hvf:kvm:tcg \
+  -cpu cortex-a57 \
+  -smp 2 \
+  -m 6G \
+  -device virtio-net,netdev=user.0,addr=0x03 \
+  -netdev user,id=user.0,hostfwd=tcp::2847-:22 \
+  -display none \
+  -monitor none \
+  -boot strict=off \
+  -bios "$QVM_CACHE/share/qemu/linaro_uefi.fd" \
+  -device virtio-scsi-pci \
+  -device scsi-hd,drive=drive0,bootindex=0 \
+  -drive if=none,file="$VM_IMAGE",id=drive0,cache=unsafe,discard=ignore,format=qcow2

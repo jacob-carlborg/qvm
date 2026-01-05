@@ -1,0 +1,327 @@
+#!/bin/sh
+
+set -e
+
+# --- Constants & Configuration ---
+VERSION="0.0.1"
+CACHE_DIR="${HOME}/.cache/qvm"
+# Resolve absolute path to drivers directory relative to this script
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+DRIVERS_DIR="${SCRIPT_DIR}/drivers"
+GITHUB_ORG_URL="https://github.com/cross-platform-actions"
+
+# --- Helper Functions ---
+
+log() {
+  echo "[qvm] $1"
+}
+
+error() {
+  echo "[qvm] Error: $1" >&2
+  exit 1
+}
+
+usage() {
+  cat <<EOF
+Usage: qvm <COMMAND> [OPTIONS]
+
+Commands:
+  run [OPTIONS] <OS> <VERSION>   Run a virtual machine
+  pull [OPTIONS] <OS> <VERSION>  Download VM image without running
+  list                           List created VM instances
+  config print-path              Print configuration/cache path
+
+Options:
+  --help                         Show this help message
+  --version                      Show version information
+
+Run/Pull Options:
+  --platform <ARCH>              CPU architecture (default: host)
+
+Run Options:
+  --rm                           Delete VM instance after shutdown
+  --dry-run                      Print QEMU command without running
+EOF
+}
+
+print_version() {
+  echo "qvm version ${VERSION}"
+}
+
+# Detect host OS and Architecture
+detect_host() {
+  HOST_OS=$(uname -s | tr '[:upper:]' '[:lower:]')
+  HOST_ARCH=$(uname -m)
+
+  case "$HOST_ARCH" in
+    x86_64|amd64) HOST_ARCH="x86-64" ;;
+    arm64|aarch64) HOST_ARCH="arm64" ;;
+    *) error "Unsupported host architecture: $HOST_ARCH" ;;
+  esac
+
+  if [ "$HOST_OS" != "linux" ] && [ "$HOST_OS" != "darwin" ]; then
+     error "Unsupported host OS: $HOST_OS"
+  fi
+}
+
+# Resolve latest version tag from GitHub releases via redirect
+resolve_latest_version() {
+  _repo="$1"
+  _url="${GITHUB_ORG_URL}/${_repo}/releases/latest"
+  
+  # Fetch effective URL after redirect
+  _latest_url=$(curl -Ls -o /dev/null -w %{url_effective} "$_url")
+  if [ -z "$_latest_url" ]; then
+    error "Failed to resolve latest version for $_repo"
+  fi
+  
+  # Extract tag from URL (everything after last /)
+  echo "${_latest_url##*/}"
+}
+
+# Download file with retries
+ensure_download() {
+  _url="$1"
+  _dest="$2"
+  
+  if [ ! -f "$_dest" ]; then
+    log "Downloading $(basename "$_dest")..."
+    mkdir -p "$(dirname "$_dest")"
+    # Use temporary file to ensure atomic completion
+    _tmp="${_dest}.part"
+    if ! curl -L -f -s -S --retry 3 --retry-delay 2 -o "$_tmp" "$_url"; then
+      rm -f "$_tmp"
+      error "Download failed: $_url"
+    fi
+    mv "$_tmp" "$_dest"
+  fi
+}
+
+# Ensure QEMU binaries and tools are installed
+ensure_qemu() {
+  _target_arch="$1" # "x86-64" or "arm64"
+  
+  mkdir -p "$CACHE_DIR/bin"
+  mkdir -p "$CACHE_DIR/share"
+
+  # Map architectures to QEMU naming convention
+  if [ "$_target_arch" = "x86-64" ]; then _qemu_arch="x86_64"; else _qemu_arch="aarch64"; fi
+  if [ "$HOST_OS" = "darwin" ]; then _res_os="macos"; else _res_os="linux"; fi
+
+  # Check for binaries
+  _qemu_bin="$CACHE_DIR/bin/qemu-system-${_qemu_arch}"
+  _img_bin="$CACHE_DIR/bin/qemu-img"
+
+  if [ -f "$_qemu_bin" ] && [ -f "$_img_bin" ]; then
+    return
+  fi
+
+  log "Resolving QEMU resources version..."
+  _res_ver=$(resolve_latest_version "resources")
+  log "Resolved resources to $_res_ver"
+
+  # Download QEMU System
+  if [ ! -f "$_qemu_bin" ]; then
+    _tar="qemu-system-${_qemu_arch}-${_res_os}.tar"
+    _url="${GITHUB_ORG_URL}/resources/releases/download/${_res_ver}/${_tar}"
+    _dest_tar="$CACHE_DIR/${_tar}"
+    
+    ensure_download "$_url" "$_dest_tar"
+    log "Extracting QEMU..."
+    # Strip one level (qemu-system-xxx-xxx/)
+    tar -xf "$_dest_tar" --strip-components=1 -C "$CACHE_DIR"
+    rm "$_dest_tar"
+  fi
+
+  # Download qemu-img
+  if [ ! -f "$_img_bin" ]; then
+    _tar="resources-${_res_os}.tar"
+    _url="${GITHUB_ORG_URL}/resources/releases/download/${_res_ver}/${_tar}"
+    _dest_tar="$CACHE_DIR/${_tar}"
+    
+    ensure_download "$_url" "$_dest_tar"
+    log "Extracting qemu-img..."
+    tar -xf "$_dest_tar" --strip-components=1 -C "$CACHE_DIR"
+    rm "$_dest_tar"
+  fi
+}
+
+# Download base image
+ensure_base_image() {
+  _os="$1"
+  _ver="$2"
+  _arch="$3"
+  
+  mkdir -p "$CACHE_DIR/base_images"
+  
+  _image_name="${_os}-${_ver}-${_arch}.qcow2"
+  _image_path="$CACHE_DIR/base_images/${_image_name}"
+  
+  if [ -f "$_image_path" ]; then
+    echo "$_image_path"
+    return
+  fi
+  
+  log "Resolving base image for ${_os}..."
+  _repo="${_os}-builder"
+  _builder_ver=$(resolve_latest_version "$_repo")
+  log "Resolved ${_os} builder to $_builder_ver"
+  
+  _url="${GITHUB_ORG_URL}/${_repo}/releases/download/${_builder_ver}/${_image_name}"
+  ensure_download "$_url" "$_image_path"
+  
+  echo "$_image_path"
+}
+
+# --- Commands ---
+
+cmd_list() {
+  if [ ! -d "$CACHE_DIR/instances" ]; then
+    echo "No VM instances found."
+    return
+  fi
+  
+  echo "Created VM Instances:"
+  for f in "$CACHE_DIR/instances"/*.qcow2; do
+    if [ -e "$f" ]; then
+      basename "$f" .qcow2
+    fi
+  done
+}
+
+cmd_config() {
+  if [ "$1" = "print-path" ]; then
+    echo "$CACHE_DIR"
+  else
+    error "Unknown config command: $1"
+  fi
+}
+
+cmd_pull() {
+  detect_host
+  _target_arch="$HOST_ARCH"
+  
+  # Parse args
+  while [ $# -gt 0 ]; do
+    case "$1" in
+      --platform) _target_arch="$2"; shift 2 ;;
+      -*) error "Unknown option: $1" ;;
+      *) break ;;
+    esac
+  done
+  
+  if [ $# -lt 2 ]; then
+    error "Missing OS or VERSION arguments"
+  fi
+  
+  _target_os=$(echo "$1" | tr '[:upper:]' '[:lower:]')
+  _target_ver="$2"
+  
+  ensure_base_image "$_target_os" "$_target_ver" "$_target_arch" >/dev/null
+  log "Image cached successfully."
+}
+
+cmd_run() {
+  detect_host
+  _target_arch="$HOST_ARCH"
+  _remove_vm=0
+  _dry_run=0
+  
+  # Parse args
+  while [ $# -gt 0 ]; do
+    case "$1" in
+      --platform) _target_arch="$2"; shift 2 ;;
+      --rm) _remove_vm=1; shift ;;
+      --dry-run) _dry_run=1; shift ;;
+      -*) error "Unknown option: $1" ;;
+      *) break ;;
+    esac
+  done
+
+  if [ $# -lt 2 ]; then
+    error "Missing OS or VERSION arguments"
+  fi
+  
+  _target_os=$(echo "$1" | tr '[:upper:]' '[:lower:]')
+  _target_ver="$2"
+  
+  # Validate driver exists early
+  _driver_file="${DRIVERS_DIR}/${_target_os}-${_target_arch}.sh"
+  if [ ! -f "$_driver_file" ]; then
+    error "No driver found for ${_target_os} on ${_target_arch}"
+  fi
+  
+  # Prepare environment
+  ensure_qemu "$_target_arch"
+  export PATH="$CACHE_DIR/bin:$PATH"
+  
+  _base_image=$(ensure_base_image "$_target_os" "$_target_ver" "$_target_arch")
+  
+  # Create Instance
+  mkdir -p "$CACHE_DIR/instances"
+  _instance_name="${_target_os}-${_target_ver}-${_target_arch}-instance"
+  _instance_path="$CACHE_DIR/instances/${_instance_name}.qcow2"
+  
+  if [ ! -f "$_instance_path" ]; then
+    log "Creating instance image..."
+    qemu-img create -f qcow2 -b "$_base_image" -F qcow2 "$_instance_path" >/dev/null
+  fi
+  
+  # Verify instance creation succeeded
+  if [ ! -f "$_instance_path" ]; then
+    error "Failed to create instance image at $_instance_path"
+  fi
+  
+  # Export vars for driver
+  export QVM_CACHE="$CACHE_DIR"
+  export VM_IMAGE="$_instance_path"
+  
+  if [ "$_dry_run" -eq 1 ]; then
+    echo "Dry Run Command:"
+    # Run driver in subshell with mocked QEMU binaries
+    (
+      qemu-system-aarch64() { echo "qemu-system-aarch64 $*"; }
+      qemu-system-x86_64() { echo "qemu-system-x86_64 $*"; }
+      # Export mocks is tricky in SH. Sourcing is better.
+      # We just define them here and source the script.
+      . "$_driver_file"
+    )
+  else
+    log "Starting VM..."
+    # Execute driver
+    ( . "$_driver_file" )
+    
+    if [ "$_remove_vm" -eq 1 ]; then
+      log "Cleaning up instance..."
+      rm -f "$_instance_path"
+    fi
+  fi
+}
+
+# --- Main Entry Point ---
+
+main() {
+  # Global options check
+  case "$1" in
+    --help|-h) usage; exit 0 ;;
+    --version|-v) print_version; exit 0 ;;
+  esac
+
+  if [ $# -eq 0 ]; then
+    usage
+    exit 0
+  fi
+
+  CMD="$1"
+  shift
+
+  case "$CMD" in
+    run) cmd_run "$@" ;;
+    pull) cmd_pull "$@" ;;
+    list) cmd_list "$@" ;;
+    config) cmd_config "$@" ;;
+    *) error "Unknown command: $CMD. See 'qvm --help'." ;;
+  esac
+}
+
+main "$@"
