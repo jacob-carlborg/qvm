@@ -51,6 +51,7 @@ qvm --version
 ### Command Options
 
 #### `run`
+- `--name <NAME>`: Name of the VM instance. Allows running multiple instances of the same OS/Version. Defaults to a randomly generated name (e.g., `qvm-<RANDOM>`).
 - `--platform <ARCH>`: CPU architecture.
 - `--rm`: Delete the VM instance after shutdown.
 - `--dry-run`: Print the generated QEMU command.

@@ -153,6 +153,10 @@ ensure_qemu() {
     log "Extracting qemu-img..."
     tar -xf "$_dest_tar" --strip-components=1 -C "$CACHE_DIR"
     rm "$_dest_tar"
+    # Move qemu-img to bin if it ended up in root
+    if [ -f "$CACHE_DIR/qemu-img" ]; then
+      mv "$CACHE_DIR/qemu-img" "$CACHE_DIR/bin/"
+    fi
   fi
 }
 
@@ -236,10 +240,12 @@ cmd_run() {
   _target_arch="$HOST_ARCH"
   _remove_vm=0
   _dry_run=0
+  _custom_name=""
   
   # Parse args
   while [ $# -gt 0 ]; do
     case "$1" in
+      --name) _custom_name="$2"; shift 2 ;;
       --platform) _target_arch="$2"; shift 2 ;;
       --rm) _remove_vm=1; shift ;;
       --dry-run) _dry_run=1; shift ;;
@@ -269,11 +275,18 @@ cmd_run() {
   
   # Create Instance
   mkdir -p "$CACHE_DIR/instances"
-  _instance_name="${_target_os}-${_target_ver}-${_target_arch}-instance"
+  
+  if [ -n "$_custom_name" ]; then
+    _instance_name="$_custom_name"
+  else
+    # Generate random name: qvm-<timestamp>-<pid>
+    _instance_name="qvm-$(date +%s)-$$"
+  fi
+  
   _instance_path="$CACHE_DIR/instances/${_instance_name}.qcow2"
   
   if [ ! -f "$_instance_path" ]; then
-    log "Creating instance image..."
+    log "Creating instance image $_instance_name..."
     qemu-img create -f qcow2 -b "$_base_image" -F qcow2 "$_instance_path" >/dev/null
   fi
   
