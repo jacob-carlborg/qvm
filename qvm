@@ -260,6 +260,9 @@ cmd_run() {
   _custom_name=""
   
   # Parse args
+  # We need to handle positional arguments (OS, VERSION) mixed with flags
+  _positional_args=""
+  
   while [ $# -gt 0 ]; do
     case "$1" in
       --name) _custom_name="$2"; shift 2 ;;
@@ -267,9 +270,16 @@ cmd_run() {
       --rm) _remove_vm=1; shift ;;
       --dry-run) _dry_run=1; shift ;;
       -*) error "Unknown option: $1" ;;
-      *) break ;;
+      *) 
+        # Collect positional args
+        _positional_args="$_positional_args $1"
+        shift 
+        ;;
     esac
   done
+  
+  # Reset positional args
+  set -- $_positional_args
 
   if [ $# -lt 2 ]; then
     error "Missing OS or VERSION arguments"
@@ -328,12 +338,29 @@ cmd_run() {
     )
   else
     log "Starting VM..."
+    
+    # Setup cleanup trap if --rm is used
+    if [ "$_remove_vm" -eq 1 ]; then
+      trap 'log "Cleaning up instance (signal)..."; rm -f "$_instance_path"; exit 1' INT TERM HUP
+    fi
+
     # Execute driver
+    # Disable exit on error for the driver execution so we can cleanup
+    set +e
     ( . "$_driver_file" )
+    _qemu_exit_code=$?
+    set -e
+    
+    # Clear trap
+    trap - INT TERM HUP
     
     if [ "$_remove_vm" -eq 1 ]; then
       log "Cleaning up instance..."
       rm -f "$_instance_path"
+    fi
+    
+    if [ $_qemu_exit_code -ne 0 ]; then
+       exit $_qemu_exit_code
     fi
   fi
 }
