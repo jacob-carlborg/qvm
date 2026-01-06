@@ -253,18 +253,20 @@ cmd_rm() {
   done
 
   if [ $# -lt 1 ]; then
-    error "Missing argument: <NAME>"
+    error "Missing argument: <NAME>..."
   fi
   
-  _name="$1"
-  _path="$CACHE_DIR/instances/${_name}.qcow2"
-  
-  if [ ! -f "$_path" ]; then
-    error "VM instance not found: $_name"
-  fi
-  
-  rm "$_path"
-  log "Removed VM instance: $_name"
+  for _name in "$@"; do
+    _path="$CACHE_DIR/instances/${_name}.qcow2"
+    
+    if [ ! -f "$_path" ]; then
+      log "Warning: VM instance not found: $_name"
+      continue
+    fi
+    
+    rm "$_path"
+    log "Removed VM instance: $_name"
+  done
 }
 
 cmd_config() {

@@ -61,7 +61,7 @@ qvm --version
 - `--platform <ARCH>`: CPU architecture (defaults to host).
 
 #### `rm`
-- `<NAME>`: The name of the VM instance to remove (as shown in `list`).
+- `<NAME>...`: One or more names of VM instances to remove (as shown in `list`).
 
 
 ### Behavior
