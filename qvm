@@ -124,7 +124,7 @@ resolve_latest_version() {
   _url="${GITHUB_ORG_URL}/${_repo}/releases/latest"
 
   # Fetch effective URL after redirect
-  _latest_url=$(curl -Ls -o /dev/null -w %{url_effective} "$_url")
+  _latest_url=$(curl -Ls -o /dev/null -w '%{url_effective}' "$_url")
   if [ -z "$_latest_url" ]; then
     error "Failed to resolve latest version for $_repo"
   fi
@@ -565,6 +565,7 @@ cmd_run() {
   done
 
   # Reset positional args
+  # shellcheck disable=SC2086
   set -- $_positional_args
 
   if [ $# -lt 2 ]; then
@@ -621,8 +622,8 @@ cmd_run() {
       _mock_bin_dir="$(mktemp -d)"
 
       # Define the mock content
-      _mock_content='#!/bin/sh
-echo "$(basename "$0") $*"'
+      _mock_content="#!/bin/sh
+echo \"\$(basename \"\$0\") \$*\""
 
       # Create mocks
       echo "$_mock_content" > "$_mock_bin_dir/qemu-system-aarch64"
@@ -634,6 +635,7 @@ echo "$(basename "$0") $*"'
       PATH="$_mock_bin_dir:$PATH"
 
       # Source the driver
+      # shellcheck source=/dev/null
       . "$_driver_file"
 
       # Cleanup
@@ -650,6 +652,7 @@ echo "$(basename "$0") $*"'
     # Execute driver
     # Disable exit on error for the driver execution so we can cleanup
     set +e
+    # shellcheck source=/dev/null
     ( . "$_driver_file" )
     _qemu_exit_code=$?
     set -e
