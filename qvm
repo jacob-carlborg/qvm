@@ -6,7 +6,18 @@ set -e
 VERSION="0.0.1"
 CACHE_DIR="${HOME}/.cache/qvm"
 # Resolve absolute path to drivers directory relative to this script
-SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+# Handle symbolic links to find the actual source directory
+_source="$0"
+while [ -h "$_source" ]; do
+  _dir="$(cd -P "$(dirname "$_source")" && pwd)"
+  _source="$(readlink "$_source")"
+  # If the link is relative, resolve it relative to the symlink's directory
+  case "$_source" in
+    /*) ;;
+    *) _source="$_dir/$_source" ;;
+  esac
+done
+SCRIPT_DIR="$(cd -P "$(dirname "$_source")" && pwd)"
 DRIVERS_DIR="${SCRIPT_DIR}/drivers"
 GITHUB_ORG_URL="https://github.com/cross-platform-actions"
 
