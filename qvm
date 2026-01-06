@@ -616,11 +616,28 @@ cmd_run() {
     echo "Dry Run Command:"
     # Run driver in subshell with mocked QEMU binaries
     (
-      qemu-system-aarch64() { echo "qemu-system-aarch64 $*"; }
-      qemu-system-x86_64() { echo "qemu-system-x86_64 $*"; }
-      # Export mocks is tricky in SH. Sourcing is better.
-      # We just define them here and source the script.
+      # Create temporary mock binaries for the dry run to avoid
+      # defining functions with hyphens (non-POSIX).
+      _mock_bin_dir="$(mktemp -d)"
+
+      # Define the mock content
+      _mock_content='#!/bin/sh
+echo "$(basename "$0") $*"'
+
+      # Create mocks
+      echo "$_mock_content" > "$_mock_bin_dir/qemu-system-aarch64"
+      echo "$_mock_content" > "$_mock_bin_dir/qemu-system-x86_64"
+
+      chmod +x "$_mock_bin_dir/qemu-system-aarch64" "$_mock_bin_dir/qemu-system-x86_64"
+
+      # Prepend to PATH
+      PATH="$_mock_bin_dir:$PATH"
+
+      # Source the driver
       . "$_driver_file"
+
+      # Cleanup
+      rm -rf "$_mock_bin_dir"
     )
   else
     log "Starting VM..."

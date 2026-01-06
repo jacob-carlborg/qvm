@@ -1,0 +1,22 @@
+#!/bin/sh
+# Mock uname command for testing qvm
+
+case "$1" in
+  -s)
+    if [ -n "$MOCK_UNAME_S" ]; then
+      echo "$MOCK_UNAME_S"
+    else
+      /usr/bin/uname -s
+    fi
+    ;;
+  -m)
+    if [ -n "$MOCK_UNAME_M" ]; then
+      echo "$MOCK_UNAME_M"
+    else
+      /usr/bin/uname -m
+    fi
+    ;;
+  *)
+    /usr/bin/uname "$@"
+    ;;
+esac

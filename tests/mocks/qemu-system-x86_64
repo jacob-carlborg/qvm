@@ -1,0 +1,5 @@
+#!/bin/sh
+# Mock qemu-system-* command
+
+echo "[mock-qemu] Running qemu-system-$(uname -m)"
+echo "Args: $@"

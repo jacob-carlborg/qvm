@@ -1,0 +1,85 @@
+#!/bin/sh
+# Mock curl command
+
+output_file=""
+write_out=""
+url=""
+
+# Parse arguments
+while [ $# -gt 0 ]; do
+  case "$1" in
+    -o)
+      output_file="$2"
+      shift 2
+      ;;
+    -w)
+      write_out="$2"
+      shift 2
+      ;;
+    --retry|--retry-delay)
+      shift 2
+      ;;
+    -*)
+      shift
+      ;;
+    *)
+      url="$1"
+      shift
+      ;;
+  esac
+done
+
+# Handle version resolution (redirect check)
+if [ -n "$write_out" ]; then
+  if echo "$url" | grep -q "releases/latest"; then
+    echo "${url}/tag/v1.0.0"
+  else
+    echo "$url"
+  fi
+  exit 0
+fi
+
+# Locate the actual mock scripts to package
+# We assume the mocks are in the same directory as this script
+MOCKS_DIR="$(cd "$(dirname "$0")" && pwd)"
+MOCK_QEMU_IMG="${MOCKS_DIR}/qemu-img"
+MOCK_QEMU_SYS="${MOCKS_DIR}/qemu-system-x86_64"
+
+# Handle file download
+if [ -n "$output_file" ]; then
+  # Determine if we should create a tarball based on URL
+  # URLs for tars end in .tar
+  if echo "$url" | grep -q "\.tar$"; then
+    tmp_dir=$(mktemp -d)
+    mkdir -p "$tmp_dir/archive"
+    
+    if echo "$url" | grep -q "qemu-system"; then
+      # Create bin structure
+      mkdir -p "$tmp_dir/archive/bin"
+      
+      # Use the actual mock script content
+      if echo "$url" | grep -q "aarch64"; then
+        cp "${MOCKS_DIR}/qemu-system-aarch64" "$tmp_dir/archive/bin/qemu-system-aarch64"
+      else
+        cp "${MOCKS_DIR}/qemu-system-x86_64" "$tmp_dir/archive/bin/qemu-system-x86_64"
+      fi
+      
+    elif echo "$url" | grep -q "resources"; then
+      # Place in root of archive, qvm handles move
+      # Use actual mock script content
+      cp "${MOCK_QEMU_IMG}" "$tmp_dir/archive/qemu-img"
+    fi
+    
+    # Create tar
+    # -C change to directory
+    tar -cf "$output_file" -C "$tmp_dir" archive
+    rm -rf "$tmp_dir"
+  else
+    # Regular file (e.g. qcow2 or other)
+    echo "mock-content-for-$url" > "$output_file"
+  fi
+  
+  # echo "[mock-curl] Downloaded $url to $output_file"
+else
+  echo "[mock-curl] Fetched $url"
+fi
