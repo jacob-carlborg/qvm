@@ -162,4 +162,4 @@ integration testing.
 
 ## 📄 License
 
-This project is open source.
+This project is licensed under the MIT License - see the [license](license) file for details.
