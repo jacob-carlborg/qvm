@@ -134,6 +134,32 @@ Resources are downloaded from the
 [cross-platform-actions](https://github.com/cross-platform-actions) GitHub
 organization.
 
+## 🧪 Development & Testing
+
+This project targets strict POSIX `sh` compatibility to ensure it runs anywhere.
+
+### Static Analysis
+
+Use `shellcheck` to ensure syntax compliance and avoid bashisms:
+
+```bash
+./ci.sh lint
+```
+
+### Automated Tests
+
+We recommend using [bats-core](https://github.com/bats-core/bats-core) for
+integration testing.
+
+1.  **Install Bats:** Follow instructions at [bats-core](https://github.com/bats-core/bats-core).
+2.  **Directory Structure:**
+    *   `tests/`: Contains `.bats` test files.
+    *   `tests/mocks/`: Contains mock scripts for `curl`, `uname`, and `qemu-system-*`.
+3.  **Running Tests:**
+    ```bash
+    ./ci.sh test
+    ```
+
 ## 📄 License
 
 This project is open source.
