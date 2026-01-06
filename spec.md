@@ -26,6 +26,9 @@ qvm run [OPTIONS] <OS> <VERSION>
 # List created VM instances
 qvm list
 
+# Search for available versions
+qvm search [OS]
+
 # Configuration
 qvm config print-path
 
@@ -43,6 +46,7 @@ qvm --version
 - `pull`: Downloads the base VM image for the specified OS/Version to the cache without running it.
 - `rm`: Removes a specific VM instance (backing file) from the cache.
 - `list`: Lists all created VM instances (backing files) currently in the cache.
+- `search`: Lists available combinations of versions and architectures for a given OS (or all supported OSes if none specified) by querying GitHub releases.
 - `config print-path`: Prints the absolute path to the configuration/cache directory.
 
 ### Global Options
@@ -62,6 +66,9 @@ qvm --version
 
 #### `rm`
 - `<NAME>...`: One or more names of VM instances to remove (as shown in `list`).
+
+#### `search`
+- `<OS>`: (Optional) The operating system to filter results by (e.g., `freebsd`). If omitted, lists versions for all supported OSes.
 
 
 ### Behavior

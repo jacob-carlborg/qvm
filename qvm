@@ -30,6 +30,7 @@ Commands:
   pull [OPTIONS] <OS> <VERSION>  Download VM image without running
   rm <NAME>                      Remove a VM instance
   list                           List created VM instances
+  search [OS]                    List available VM versions
   config <COMMAND>               Manage configuration
 
 Options:
@@ -65,6 +66,19 @@ Description:
 
 Options:
   --platform <ARCH>  CPU architecture (default: host)
+  --help             Show this help message
+EOF
+}
+
+usage_search() {
+  cat <<EOF
+Usage: qvm search [OS]
+
+Description:
+  Lists available combinations of versions and architectures for the specified OS.
+  If no OS is specified, lists versions for all supported operating systems.
+
+Options:
   --help             Show this help message
 EOF
 }
@@ -108,13 +122,13 @@ detect_host() {
 resolve_latest_version() {
   _repo="$1"
   _url="${GITHUB_ORG_URL}/${_repo}/releases/latest"
-  
+
   # Fetch effective URL after redirect
   _latest_url=$(curl -Ls -o /dev/null -w %{url_effective} "$_url")
   if [ -z "$_latest_url" ]; then
     error "Failed to resolve latest version for $_repo"
   fi
-  
+
   # Extract tag from URL (everything after last /)
   echo "${_latest_url##*/}"
 }
@@ -123,7 +137,7 @@ resolve_latest_version() {
 ensure_download() {
   _url="$1"
   _dest="$2"
-  
+
   if [ ! -f "$_dest" ]; then
     log "Downloading $(basename "$_dest")..."
     mkdir -p "$(dirname "$_dest")"
@@ -140,7 +154,7 @@ ensure_download() {
 # Ensure QEMU binaries and tools are installed
 ensure_qemu() {
   _target_arch="$1" # "x86-64" or "arm64"
-  
+
   mkdir -p "$CACHE_DIR/bin"
   mkdir -p "$CACHE_DIR/share"
 
@@ -175,7 +189,7 @@ ensure_qemu() {
     _tar="qemu-system-${_qemu_arch}-${_res_os}.tar"
     _url="${GITHUB_ORG_URL}/resources/releases/download/${_res_ver}/${_tar}"
     _dest_tar="$CACHE_DIR/${_tar}"
-    
+
     ensure_download "$_url" "$_dest_tar"
     log "Extracting QEMU..."
     # Strip one level (qemu-system-xxx-xxx/)
@@ -188,7 +202,7 @@ ensure_qemu() {
     _tar="resources-${_res_os}.tar"
     _url="${GITHUB_ORG_URL}/resources/releases/download/${_res_ver}/${_tar}"
     _dest_tar="$CACHE_DIR/${_tar}"
-    
+
     ensure_download "$_url" "$_dest_tar"
     log "Extracting qemu-img..."
     tar -xf "$_dest_tar" --strip-components=1 -C "$CACHE_DIR"
@@ -205,25 +219,25 @@ ensure_base_image() {
   _os="$1"
   _ver="$2"
   _arch="$3"
-  
+
   mkdir -p "$CACHE_DIR/base_images"
-  
+
   _image_name="${_os}-${_ver}-${_arch}.qcow2"
   _image_path="$CACHE_DIR/base_images/${_image_name}"
-  
+
   if [ -f "$_image_path" ]; then
     echo "$_image_path"
     return
   fi
-  
+
   log "Resolving base image for ${_os}..."
   _repo="${_os}-builder"
   _builder_ver=$(resolve_latest_version "$_repo")
   log "Resolved ${_os} builder to $_builder_ver"
-  
+
   _url="${GITHUB_ORG_URL}/${_repo}/releases/download/${_builder_ver}/${_image_name}"
   ensure_download "$_url" "$_image_path"
-  
+
   echo "$_image_path"
 }
 
@@ -234,13 +248,212 @@ cmd_list() {
     echo "No VM instances found."
     return
   fi
-  
+
   echo "Created VM Instances:"
   for f in "$CACHE_DIR/instances"/*.qcow2; do
     if [ -e "$f" ]; then
       basename "$f" .qcow2
     fi
   done
+}
+
+fetch_releases_for_os() {
+  _os="$1"
+  _repo="${_os}-builder"
+
+  if ! command -v jq >/dev/null 2>&1; then
+     echo "  Error: 'jq' is required for the search command."
+     return
+  fi
+
+  _api_url="https://api.github.com/repos/cross-platform-actions/${_repo}/releases"
+
+  _tmp_json="${CACHE_DIR}/releases_${_os}.json"
+  mkdir -p "$CACHE_DIR"
+
+  if ! curl -s "$_api_url" > "$_tmp_json"; then
+    echo "  Error: Failed to fetch releases for $_os."
+    rm -f "$_tmp_json"
+    return
+  fi
+
+  if grep -q "API rate limit exceeded" "$_tmp_json"; then
+    echo "  Error: GitHub API rate limit exceeded."
+    rm -f "$_tmp_json"
+    return
+  fi
+
+  if [ ! -s "$_tmp_json" ]; then
+     echo "  Error: Empty response from GitHub."
+     rm -f "$_tmp_json"
+     return
+  fi
+
+  # Extract version and arch using parsing logic in awk
+  cat "$_tmp_json" | jq -r --arg os "$_os" '
+    .[]? | .assets[]? | .name
+    | select(endswith(".qcow2"))
+    | select(startswith($os + "-"))
+    | sub("^" + $os + "-"; "")
+    | sub("\\.qcow2$"; "")
+  ' | sort -u | awk '
+    {
+      # Input is like "13.2-x86-64" or "9.3-arm64"
+      n = split($0, p, "-")
+
+      # Heuristic for x86-64 which is split by hyphen
+      if (n >= 2 && p[n] == "64" && p[n-1] == "x86") {
+         arch = "x86-64"
+         ver_last_idx = n - 2
+      } else {
+         arch = p[n]
+         ver_last_idx = n - 1
+      }
+
+      # Reconstruct version
+      ver = ""
+      for (i=1; i<=ver_last_idx; i++) {
+         ver = (ver == "" ? "" : ver "-") p[i]
+      }
+
+      if (ver != "" && arch != "") {
+        # Store architectures for each version
+        if (!(ver in versions)) {
+          versions[ver] = arch
+          order[count++] = ver
+        } else {
+          versions[ver] = versions[ver] " " arch
+        }
+
+        # Track all seen architectures
+        arches[arch] = 1
+      }
+    }
+    END {
+      # Build ordered list of columns (alphabetical)
+      num_cols = 0
+      for (a in arches) {
+        headers[num_cols++] = a
+      }
+
+      # Sort headers alphabetically
+      for (i = 0; i < num_cols; i++) {
+        for (j = i + 1; j < num_cols; j++) {
+           if (headers[j] < headers[i]) {
+              t = headers[i]; headers[i] = headers[j]; headers[j] = t
+           }
+        }
+      }
+
+      # Header Row
+      printf "%-12s", "VERSION"
+      for (i = 0; i < num_cols; i++) {
+         printf "%-10s", headers[i]
+      }
+      print ""
+
+      # Separator Row
+      printf "%-12s", "-------"
+      for (i = 0; i < num_cols; i++) {
+         len = length(headers[i])
+         dashes = ""
+         for (k=0; k<len; k++) dashes = dashes "-"
+         # Pad to matches column width (10) or length if longer
+         width = (len > 10) ? len : 10
+         # Actually we use %-10s so it pads to 10 minimum.
+         # For the separator we just want dashes matching the header text usually,
+         # but simpler to just print fixed dashes or match alignment.
+         # Let"s just use fixed dashes for visual consistency.
+         printf "%-10s", "-----"
+      }
+      print ""
+
+      # Sort versions in descending order using version comparison
+      for (i = 0; i < count; i++) {
+        for (j = i + 1; j < count; j++) {
+           v1 = order[i]
+           v2 = order[j]
+
+           # Compare v1 and v2 (swaps if v2 > v1)
+           n1 = split(v1, parts1, ".")
+           n2 = split(v2, parts2, ".")
+           limit = (n1 < n2) ? n1 : n2
+
+           should_swap = 0
+           diff_found = 0
+
+           for (k = 1; k <= limit; k++) {
+             if (parts1[k] + 0 < parts2[k] + 0) {
+               should_swap = 1
+               diff_found = 1
+               break
+             } else if (parts1[k] + 0 > parts2[k] + 0) {
+               should_swap = 0
+               diff_found = 1
+               break
+             }
+           }
+
+           if (diff_found == 0) {
+             # Prefix matches. Longer version is "larger" (e.g. 1.2.1 > 1.2)
+             if (n2 > n1) should_swap = 1
+           }
+
+           if (should_swap) {
+              temp = order[i]
+              order[i] = order[j]
+              order[j] = temp
+           }
+        }
+      }
+
+      # Print rows
+      for (i = 0; i < count; i++) {
+        v = order[i]
+        printf "%-12s", v
+
+        for (j = 0; j < num_cols; j++) {
+            arch = headers[j]
+            # Check for exact match in space-separated list
+            if (index(" " versions[v] " ", " " arch " ")) {
+                printf "%-10s", "yes"
+            } else {
+                printf "%-10s", "-"
+            }
+        }
+        print ""
+      }
+    }
+  '
+}
+
+cmd_search() {
+  # Check for help flag
+  for arg in "$@"; do
+    if [ "$arg" = "--help" ] || [ "$arg" = "-h" ]; then
+      usage_search
+      exit 0
+    fi
+  done
+
+  _search_os="$1"
+
+  # List of known supported OSes from spec/drivers
+  _supported_oses="freebsd netbsd openbsd haiku omnios"
+
+  if [ -n "$_search_os" ]; then
+    # User specified an OS
+    _search_os=$(echo "$_search_os" | tr '[:upper:]' '[:lower:]')
+    echo "Searching available versions for $_search_os..."
+    fetch_releases_for_os "$_search_os"
+  else
+    # Search all
+    for _os in $_supported_oses; do
+      echo "Available versions for $_os:"
+      fetch_releases_for_os "$_os"
+      echo ""
+    done
+  fi
 }
 
 cmd_rm() {
@@ -255,15 +468,15 @@ cmd_rm() {
   if [ $# -lt 1 ]; then
     error "Missing argument: <NAME>..."
   fi
-  
+
   for _name in "$@"; do
     _path="$CACHE_DIR/instances/${_name}.qcow2"
-    
+
     if [ ! -f "$_path" ]; then
       log "Warning: VM instance not found: $_name"
       continue
     fi
-    
+
     rm "$_path"
     log "Removed VM instance: $_name"
   done
@@ -296,7 +509,7 @@ cmd_pull() {
 
   detect_host
   _target_arch="$HOST_ARCH"
-  
+
   # Parse args
   while [ $# -gt 0 ]; do
     case "$1" in
@@ -305,14 +518,14 @@ cmd_pull() {
       *) break ;;
     esac
   done
-  
+
   if [ $# -lt 2 ]; then
     error "Missing OS or VERSION arguments"
   fi
-  
+
   _target_os=$(echo "$1" | tr '[:upper:]' '[:lower:]')
   _target_ver="$2"
-  
+
   ensure_base_image "$_target_os" "$_target_ver" "$_target_arch" >/dev/null
   log "Image cached successfully."
 }
@@ -331,11 +544,11 @@ cmd_run() {
   _remove_vm=0
   _dry_run=0
   _custom_name=""
-  
+
   # Parse args
   # We need to handle positional arguments (OS, VERSION) mixed with flags
   _positional_args=""
-  
+
   while [ $# -gt 0 ]; do
     case "$1" in
       --name) _custom_name="$2"; shift 2 ;;
@@ -343,62 +556,62 @@ cmd_run() {
       --rm) _remove_vm=1; shift ;;
       --dry-run) _dry_run=1; shift ;;
       -*) error "Unknown option: $1" ;;
-      *) 
+      *)
         # Collect positional args
         _positional_args="$_positional_args $1"
-        shift 
+        shift
         ;;
     esac
   done
-  
+
   # Reset positional args
   set -- $_positional_args
 
   if [ $# -lt 2 ]; then
     error "Missing OS or VERSION arguments"
   fi
-  
+
   _target_os=$(echo "$1" | tr '[:upper:]' '[:lower:]')
   _target_ver="$2"
-  
+
   # Validate driver exists early
   _driver_file="${DRIVERS_DIR}/${_target_os}-${_target_arch}.sh"
   if [ ! -f "$_driver_file" ]; then
     error "No driver found for ${_target_os} on ${_target_arch}"
   fi
-  
+
   # Prepare environment
   ensure_qemu "$_target_arch"
   export PATH="$CACHE_DIR/bin:$PATH"
-  
+
   _base_image=$(ensure_base_image "$_target_os" "$_target_ver" "$_target_arch")
-  
+
   # Create Instance
   mkdir -p "$CACHE_DIR/instances"
-  
+
   if [ -n "$_custom_name" ]; then
     _instance_name="$_custom_name"
   else
     # Generate random name: qvm-<timestamp>-<pid>
     _instance_name="qvm-$(date +%s)-$$"
   fi
-  
+
   _instance_path="$CACHE_DIR/instances/${_instance_name}.qcow2"
-  
+
   if [ ! -f "$_instance_path" ]; then
     log "Creating instance image $_instance_name..."
     qemu-img create -f qcow2 -b "$_base_image" -F qcow2 "$_instance_path" >/dev/null
   fi
-  
+
   # Verify instance creation succeeded
   if [ ! -f "$_instance_path" ]; then
     error "Failed to create instance image at $_instance_path"
   fi
-  
+
   # Export vars for driver
   export QVM_CACHE="$CACHE_DIR"
   export VM_IMAGE="$_instance_path"
-  
+
   if [ "$_dry_run" -eq 1 ]; then
     echo "Dry Run Command:"
     # Run driver in subshell with mocked QEMU binaries
@@ -411,7 +624,7 @@ cmd_run() {
     )
   else
     log "Starting VM..."
-    
+
     # Setup cleanup trap if --rm is used
     if [ "$_remove_vm" -eq 1 ]; then
       trap 'log "Cleaning up instance (signal)..."; rm -f "$_instance_path"; exit 1' INT TERM HUP
@@ -423,15 +636,15 @@ cmd_run() {
     ( . "$_driver_file" )
     _qemu_exit_code=$?
     set -e
-    
+
     # Clear trap
     trap - INT TERM HUP
-    
+
     if [ "$_remove_vm" -eq 1 ]; then
       log "Cleaning up instance..."
       rm -f "$_instance_path"
     fi
-    
+
     if [ $_qemu_exit_code -ne 0 ]; then
        exit $_qemu_exit_code
     fi
@@ -460,6 +673,7 @@ main() {
     pull) cmd_pull "$@" ;;
     rm) cmd_rm "$@" ;;
     list) cmd_list "$@" ;;
+    search) cmd_search "$@" ;;
     config) cmd_config "$@" ;;
     *) error "Unknown command: $CMD. See 'qvm --help'." ;;
   esac

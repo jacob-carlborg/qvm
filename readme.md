@@ -82,6 +82,14 @@ list and manage them easily.
 # List all active instances
 qvm list
 
+# Search for available versions
+qvm search freebsd
+# Output:
+# VERSION     x86-64    arm64
+# -------     ------    -----
+# 13.2        yes       yes
+# 14.0        yes       -
+
 # Remove specific instances
 qvm rm qvm-123456 qvm-789012
 ```
