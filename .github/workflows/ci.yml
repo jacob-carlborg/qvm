@@ -1,0 +1,35 @@
+name: CI
+
+on:
+  push:
+    branches: '*'
+    tags: v*
+  pull_request:
+    branches:
+      - master
+
+jobs:
+  test:
+    name: Test on ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6
+
+      - name: Install Dependencies (macOS)
+        if: runner.os == 'macOS'
+        run: brew install shellcheck bats-core
+
+      - name: Install Dependencies (Linux)
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y shellcheck bats
+
+      - name: Run ShellCheck
+        run: ./ci.sh lint
+
+      - name: Run Bats tests
+        run: ./ci.sh test

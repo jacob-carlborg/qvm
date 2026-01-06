@@ -290,13 +290,13 @@ fetch_releases_for_os() {
   fi
 
   # Extract version and arch using parsing logic in awk
-  cat "$_tmp_json" | jq -r --arg os "$_os" '
+  jq -r --arg os "$_os" '
     .[]? | .assets[]? | .name
     | select(endswith(".qcow2"))
     | select(startswith($os + "-"))
     | sub("^" + $os + "-"; "")
     | sub("\\.qcow2$"; "")
-  ' | sort -u | awk '
+  ' "$_tmp_json" | sort -u | awk '
     {
       # Input is like "13.2-x86-64" or "9.3-arm64"
       n = split($0, p, "-")
