@@ -30,7 +30,7 @@ Commands:
   pull [OPTIONS] <OS> <VERSION>  Download VM image without running
   rm <NAME>                      Remove a VM instance
   list                           List created VM instances
-  config print-path              Print configuration/cache path
+  config <COMMAND>               Manage configuration
 
 Options:
   --help                         Show this help message
@@ -69,12 +69,15 @@ Options:
 EOF
 }
 
-usage_rm() {
+usage_config() {
   cat <<EOF
-Usage: qvm rm <NAME>
+Usage: qvm config <COMMAND>
 
 Description:
-  Removes a specific VM instance from the cache.
+  Manage configuration and cache settings.
+
+Commands:
+  print-path         Print the absolute path to the configuration/cache directory
 
 Options:
   --help             Show this help message
@@ -265,6 +268,14 @@ cmd_rm() {
 }
 
 cmd_config() {
+  # Check for help flag
+  for arg in "$@"; do
+    if [ "$arg" = "--help" ] || [ "$arg" = "-h" ]; then
+      usage_config
+      exit 0
+    fi
+  done
+
   if [ "$1" = "print-path" ]; then
     echo "$CACHE_DIR"
   else
