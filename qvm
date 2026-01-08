@@ -260,10 +260,28 @@ cmd_list() {
     return
   fi
 
-  echo "Created VM Instances:"
+  # Pretty, aligned columns (POSIX printf)
+  printf "%-22s %-10s %-12s %-8s\n" "NAME" "OS" "VERSION" "ARCH"
+  printf "%-22s %-10s %-12s %-8s\n" "----------------------" "----------" "------------" "--------"
+
   for f in "$CACHE_DIR/instances"/*.qcow2; do
     if [ -e "$f" ]; then
-      basename "$f" .qcow2
+      _name=$(basename "$f" .qcow2)
+
+      _os="-"
+      _ver="-"
+      _arch="-"
+
+      _meta="$CACHE_DIR/instances/${_name}.meta"
+      if [ -f "$_meta" ]; then
+        # shellcheck source=/dev/null
+        . "$_meta"
+        _os=${OS:-"-"}
+        _ver=${VERSION:-"-"}
+        _arch=${ARCH:-"-"}
+      fi
+
+      printf "%-22s %-10s %-12s %-8s\n" "$_name" "$_os" "$_ver" "$_arch"
     fi
   done
 }
@@ -482,13 +500,14 @@ cmd_rm() {
 
   for _name in "$@"; do
     _path="$CACHE_DIR/instances/${_name}.qcow2"
+    _meta_path="$CACHE_DIR/instances/${_name}.meta"
 
     if [ ! -f "$_path" ]; then
       log "Warning: VM instance not found: $_name"
       continue
     fi
 
-    rm "$_path"
+    rm -f "$_path" "$_meta_path"
     log "Removed VM instance: $_name"
   done
 }
@@ -604,11 +623,12 @@ cmd_run() {
   if [ -n "$_custom_name" ]; then
     _instance_name="$_custom_name"
   else
-    # Generate random name: qvm-<timestamp>-<pid>
+    # Generate random name without metadata: qvm-<timestamp>-<pid>
     _instance_name="qvm-$(date +%s)-$$"
   fi
 
   _instance_path="$CACHE_DIR/instances/${_instance_name}.qcow2"
+  _instance_meta_path="$CACHE_DIR/instances/${_instance_name}.meta"
 
   if [ ! -f "$_instance_path" ]; then
     log "Creating instance image $_instance_name..."
@@ -618,6 +638,15 @@ cmd_run() {
   # Verify instance creation succeeded
   if [ ! -f "$_instance_path" ]; then
     error "Failed to create instance image at $_instance_path"
+  fi
+
+  # Persist instance metadata for list command
+  if [ ! -f "$_instance_meta_path" ]; then
+    {
+      echo "OS=$_target_os"
+      echo "VERSION=$_target_ver"
+      echo "ARCH=$_target_arch"
+    } > "$_instance_meta_path"
   fi
 
   # Export vars for driver
@@ -657,7 +686,7 @@ echo \"\$(basename \"\$0\") \$*\""
 
     # Setup cleanup trap if --rm is used
     if [ "$_remove_vm" -eq 1 ]; then
-      trap 'log "Cleaning up instance (signal)..."; rm -f "$_instance_path"; exit 1' INT TERM HUP
+      trap 'log "Cleaning up instance (signal)..."; rm -f "$_instance_path" "$_instance_meta_path"; exit 1' INT TERM HUP
     fi
 
     # Execute driver
@@ -673,7 +702,7 @@ echo \"\$(basename \"\$0\") \$*\""
 
     if [ "$_remove_vm" -eq 1 ]; then
       log "Cleaning up instance..."
-      rm -f "$_instance_path"
+      rm -f "$_instance_path" "$_instance_meta_path"
     fi
 
     if [ $_qemu_exit_code -ne 0 ]; then

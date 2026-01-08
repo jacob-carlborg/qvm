@@ -25,6 +25,9 @@ qvm run [OPTIONS] <OS> <VERSION>
 
 # List created VM instances
 qvm list
+# Output format:
+# NAME OS VERSION ARCH
+# freebsd-13.2-x86-64-qvm-1700000000-12345 freebsd 13.2 x86-64
 
 # Search for available versions
 qvm search [OS]
@@ -45,7 +48,7 @@ qvm --version
 - `run`: Downloads necessary resources and launches the VM.
 - `pull`: Downloads the base VM image for the specified OS/Version to the cache without running it.
 - `rm`: Removes a specific VM instance (backing file) from the cache.
-- `list`: Lists all created VM instances (backing files) currently in the cache.
+- `list`: Lists all created VM instances (backing files) currently in the cache, including operating system, version, and CPU architecture.
 - `search`: Lists available combinations of versions and architectures for a given OS (or all supported OSes if none specified) by querying GitHub releases.
 - `config print-path`: Prints the absolute path to the configuration/cache directory.
 

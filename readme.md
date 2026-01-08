@@ -81,6 +81,10 @@ list and manage them easily.
 ```bash
 # List all active instances
 qvm list
+# Output:
+# NAME                   OS         VERSION      ARCH
+# ---------------------- ---------- ------------ --------
+# qvm-1767882876-20785   freebsd     13.2         x86-64
 
 # Search for available versions
 qvm search freebsd
@@ -91,8 +95,10 @@ qvm search freebsd
 # 14.0        yes       -
 
 # Remove specific instances
-qvm rm qvm-123456 qvm-789012
+qvm rm qvm-1767882876-20785
 ```
+
+`qvm list` shows `OS`, `VERSION`, and `ARCH` from instance metadata created by `qvm run`.
 
 ### Caching Images
 
