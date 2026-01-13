@@ -1,13 +1,13 @@
 qemu-system-x86_64 \
-  -nographic \
   -machine type=q35,accel=hvf:kvm:tcg \
   -cpu max \
   -smp 2 \
   -m 6G \
   -device e1000,netdev=user.0,addr=0x03 \
   -netdev user,id=user.0,ipv6=off \
-  -display none \
-  -monitor none \
+  -device qemu-xhci \
+  -device usb-tablet \
+  -device nec-usb-xhci,id=usb-controller-0 \
   -boot strict=off \
   -bios "$QVM_CACHE/share/qemu/bios-256k.bin" \
   -device virtio-scsi-pci \
