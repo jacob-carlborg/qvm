@@ -468,7 +468,7 @@ cmd_search() {
   _search_os="$1"
 
   # List of known supported OSes from spec/drivers
-  _supported_oses="freebsd netbsd openbsd haiku omnios"
+  _supported_oses="dragonflybsd freebsd midnightbsd netbsd openbsd haiku omnios"
 
   if [ -n "$_search_os" ]; then
     # User specified an OS
